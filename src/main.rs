@@ -64,6 +64,8 @@ impl<'a> ResponseMessage<'a> {
                 "Content-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
                 headers.content_type, headers.content_length, body,
             );
+        } else {
+            result += "\r\n";
         }
         result
     }
