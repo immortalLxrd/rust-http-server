@@ -89,6 +89,7 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
 
     let content = str::from_utf8(&buf)?;
     let content_splited: Vec<&str> = content.split(' ').collect();
+
     let path = content_splited[1].strip_prefix('/').unwrap();
     let (route, body) = if let Some((route, body)) = path.split_once('/') {
         (route, body)
@@ -96,13 +97,35 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
         (path, "")
     };
 
-    match (route, body) {
-        (route, _) if route == "" => {
+    let (_, headers) = content.split_once("\r\n").unwrap();
+    let headers_splited: Vec<&str> = headers.split("\r\n").collect();
+
+    match (route, body, headers_splited) {
+        (route, _, _) if route == "" => {
             let message = ResponseMessage::new("HTTP/1.1", "200", "OK", Option::None, Option::None)
                 .to_string();
             stream.write(message.as_bytes())?;
         }
-        (route, body) if route == "echo" && body.len() > 0 => {
+        (route, body, _) if route == "echo" && body.len() > 0 => {
+            let headers = ResponseHeaders::new("text/plain", body);
+            let message = ResponseMessage::new(
+                "HTTP/1.1",
+                "200",
+                "OK",
+                Option::Some(headers),
+                Option::Some(body),
+            )
+            .to_string();
+            stream.write(message.as_bytes())?;
+        }
+        (route, _, headers_splited) if route == "user-agent" => {
+            let user_agent = "User-Agent: ";
+            let finded_header = headers_splited
+                .iter()
+                .find(|item| item.starts_with(user_agent))
+                .unwrap();
+            let body = finded_header.strip_prefix(user_agent).unwrap();
+
             let headers = ResponseHeaders::new("text/plain", body);
             let message = ResponseMessage::new(
                 "HTTP/1.1",
