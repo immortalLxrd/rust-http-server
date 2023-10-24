@@ -77,36 +77,39 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
 
     let content = str::from_utf8(&buf)?;
     let content_splited: Vec<&str> = content.split(' ').collect();
-    let path: Vec<&str> = content_splited[1].split('/').collect();
+    let path = content_splited[1].strip_prefix('/').unwrap();
 
-    match path {
-        path if path[1] == "" => {
-            let message = ResponseMessage::new("HTTP/1.1", "200", "OK", Option::None, Option::None)
-                .to_string();
-            stream.write(message.as_bytes())?;
-        }
-        path if path[1] == "echo" && path.len() > 2 && path[2].len() > 0 => {
+    if let Some(body) = path.strip_prefix("echo/") {
+        if body.len() > 0 {
             let headers = ResponseHeaders {
                 content_type: "text/plain",
-                content_length: path[2].len(),
+                content_length: body.len(),
             };
             let message = ResponseMessage::new(
                 "HTTP/1.1",
                 "200",
                 "OK",
                 Option::Some(headers),
-                Option::Some(path[2]),
+                Option::Some(body),
             )
             .to_string();
             stream.write(message.as_bytes())?;
-        }
-        _ => {
+        } else {
             let message =
                 ResponseMessage::new("HTTP/1.1", "404", "Not Found", Option::None, Option::None)
                     .to_string();
             stream.write(message.as_bytes())?;
         }
-    }
+    } else if path.len() == 0 {
+        let message =
+            ResponseMessage::new("HTTP/1.1", "200", "OK", Option::None, Option::None).to_string();
+        stream.write(message.as_bytes())?;
+    } else {
+        let message =
+            ResponseMessage::new("HTTP/1.1", "404", "Not Found", Option::None, Option::None)
+                .to_string();
+        stream.write(message.as_bytes())?;
+    };
 
     Ok(())
 }
