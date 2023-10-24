@@ -74,8 +74,8 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     stream.read(&mut buf)?;
 
     let content = str::from_utf8(&buf)?;
-    let content_splited: Vec<&str> = content.split(" ").collect();
-    let path = content_splited[1].split("/").collect::<Vec<&str>>();
+    let content_splited: Vec<&str> = content.split(' ').collect();
+    let path: Vec<&str> = content_splited[1].split('/').collect();
 
     match path {
         path if path[1] == "" => {
@@ -83,7 +83,7 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                 .to_string();
             stream.write(message.as_bytes())?;
         }
-        path if path[1] == "echo" => {
+        path if path[1] == "echo" && path.len() > 2 && path[2].len() > 0 => {
             let headers = ResponseHeaders {
                 content_type: "text/plain",
                 content_length: path[2].len(),
