@@ -2,26 +2,22 @@ use std::{
     error::Error,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
-    str,
+    str, thread,
 };
 
-fn main() -> Result<(), Box<dyn Error>> {
-    println!("Logs from your program will appear here!");
-
+fn main() {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                println!("accepted new connection");
-                handle_connection(stream)?;
+                thread::spawn(move || handle_connection(stream).unwrap());
             }
             Err(e) => {
                 println!("error: {}", e);
             }
         }
     }
-    Ok(())
 }
 
 struct ResponseHeaders<'a> {
@@ -100,13 +96,13 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     let (_, headers) = content.split_once("\r\n").unwrap();
     let headers_splited: Vec<&str> = headers.split("\r\n").collect();
 
-    match (route, body, headers_splited) {
-        (route, _, _) if route == "" => {
+    match route {
+        "" => {
             let message = ResponseMessage::new("HTTP/1.1", "200", "OK", Option::None, Option::None)
                 .to_string();
             stream.write(message.as_bytes())?;
         }
-        (route, body, _) if route == "echo" && body.len() > 0 => {
+        "echo" if body.len() > 0 => {
             let headers = ResponseHeaders::new("text/plain", body);
             let message = ResponseMessage::new(
                 "HTTP/1.1",
@@ -118,13 +114,13 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
             .to_string();
             stream.write(message.as_bytes())?;
         }
-        (route, _, headers_splited) if route == "user-agent" => {
-            let user_agent = "User-Agent: ";
+        "user-agent" => {
+            let user_agent_pattern = "User-Agent: ";
             let finded_header = headers_splited
                 .iter()
-                .find(|item| item.starts_with(user_agent))
+                .find(|item| item.starts_with(user_agent_pattern))
                 .unwrap();
-            let body = finded_header.strip_prefix(user_agent).unwrap();
+            let body = finded_header.strip_prefix(user_agent_pattern).unwrap();
 
             let headers = ResponseHeaders::new("text/plain", body);
             let message = ResponseMessage::new(
