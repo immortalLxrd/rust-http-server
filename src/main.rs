@@ -120,7 +120,7 @@ fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result<(), B
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let dir = if args[1] == "--directory" && !args[2].is_empty() {
+    let dir = if args.len() > 1 && args[1] == "--directory" && !args[2].is_empty() {
         Option::Some(args[2].clone())
     } else {
         Option::None
