@@ -1,85 +1,25 @@
 use std::{
+    env,
     error::Error,
-    io::{Read, Write},
+    fs::File,
+    io::{self, Read, Write},
     net::{TcpListener, TcpStream},
+    path::Path,
     str, thread,
 };
 
-fn main() {
-    let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
+mod response;
+use response::response::{ResponseHeaders, ResponseMessage};
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                thread::spawn(move || handle_connection(stream).unwrap());
-            }
-            Err(e) => {
-                println!("error: {}", e);
-            }
-        }
-    }
+fn get_file_content(path: &Path) -> io::Result<String> {
+    let mut file = File::open(path)?;
+    let mut buf = String::new();
+    file.read_to_string(&mut buf)?;
+
+    Ok(buf)
 }
 
-struct ResponseHeaders<'a> {
-    content_type: &'a str,
-    content_length: usize,
-}
-
-impl<'a> ResponseHeaders<'a> {
-    fn new(content_type: &'a str, content: &'a str) -> Self {
-        let content_length = content.len();
-
-        Self {
-            content_type,
-            content_length,
-        }
-    }
-}
-
-struct ResponseMessage<'a> {
-    protocol: &'a str,
-    status_code: &'a str,
-    message: &'a str,
-    headers: Option<ResponseHeaders<'a>>,
-    body: Option<&'a str>,
-}
-
-impl<'a> ResponseMessage<'a> {
-    fn new(
-        protocol: &'a str,
-        status_code: &'a str,
-        message: &'a str,
-        headers: Option<ResponseHeaders<'a>>,
-        body: Option<&'a str>,
-    ) -> Self {
-        Self {
-            protocol,
-            status_code,
-            message,
-            headers,
-            body,
-        }
-    }
-
-    fn to_string(self) -> String {
-        let mut result = format!(
-            "{} {} {}\r\n",
-            self.protocol, self.status_code, self.message
-        );
-        if let (Some(headers), Some(body)) = (self.headers, self.body) {
-            let headers = ResponseHeaders::new(headers.content_type, body);
-            result += &format!(
-                "Content-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
-                headers.content_type, headers.content_length, body,
-            );
-        } else {
-            result += "\r\n";
-        }
-        result
-    }
-}
-
-fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
+fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result<(), Box<dyn Error>> {
     let mut buf: [u8; 128] = [0; 128];
     stream.read(&mut buf)?;
 
@@ -102,7 +42,7 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                 .to_string();
             stream.write(message.as_bytes())?;
         }
-        "echo" if body.len() > 0 => {
+        "echo" if !body.is_empty() => {
             let headers = ResponseHeaders::new("text/plain", body);
             let message = ResponseMessage::new(
                 "HTTP/1.1",
@@ -120,17 +60,51 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                 .iter()
                 .find(|item| item.starts_with(user_agent_pattern))
                 .unwrap();
-            let body = finded_header.strip_prefix(user_agent_pattern).unwrap();
+            let response_content = finded_header.strip_prefix(user_agent_pattern).unwrap();
 
-            let headers = ResponseHeaders::new("text/plain", body);
+            let headers = ResponseHeaders::new("text/plain", response_content);
             let message = ResponseMessage::new(
                 "HTTP/1.1",
                 "200",
                 "OK",
                 Option::Some(headers),
-                Option::Some(body),
+                Option::Some(response_content),
             )
             .to_string();
+            stream.write(message.as_bytes())?;
+        }
+        "files" if !body.is_empty() => {
+            if let Some(dir) = dir {
+                let dir = if let Some(dir) = dir.strip_suffix("/") {
+                    dir
+                } else {
+                    &dir
+                };
+                let s = dir.to_owned() + &"/" + body;
+                let path = Path::new(&s);
+
+                match get_file_content(path) {
+                    Ok(content) => {
+                        let headers = ResponseHeaders::new("application/actet-stream", &content);
+                        let message = ResponseMessage::new(
+                            "HTTP/1.1",
+                            "200",
+                            "OK",
+                            Option::Some(headers),
+                            Option::Some(&content),
+                        )
+                        .to_string();
+                        stream.write(message.as_bytes())?;
+
+                        return Ok(());
+                    }
+                    Err(_) => (),
+                }
+            }
+
+            let message =
+                ResponseMessage::new("HTTP/1.1", "404", "Not Found", Option::None, Option::None)
+                    .to_string();
             stream.write(message.as_bytes())?;
         }
         _ => {
@@ -142,4 +116,28 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    let dir = if args[1] == "--directory" && !args[2].is_empty() {
+        Option::Some(args[2].clone())
+    } else {
+        Option::None
+    };
+
+    let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
+
+    for stream in listener.incoming() {
+        let dir = dir.clone();
+
+        match stream {
+            Ok(stream) => {
+                thread::spawn(move || handle_connection(stream, dir).unwrap());
+            }
+            Err(e) => {
+                println!("error: {}", e);
+            }
+        }
+    }
 }
