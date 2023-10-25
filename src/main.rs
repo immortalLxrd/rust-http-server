@@ -85,7 +85,7 @@ fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result<(), B
 
                 match get_file_content(path) {
                     Ok(content) => {
-                        let headers = ResponseHeaders::new("application/actet-stream", &content);
+                        let headers = ResponseHeaders::new("application/octet-stream", &content);
                         let message = ResponseMessage::new(
                             "HTTP/1.1",
                             "200",
