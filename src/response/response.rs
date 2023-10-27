@@ -39,7 +39,7 @@ impl<'a> ResponseMessage<'a> {
         }
     }
 
-    pub fn to_string(self) -> String {
+    pub fn as_bytes(self) -> Box<[u8]> {
         let mut result = format!(
             "{} {} {}\r\n",
             self.protocol, self.status_code, self.message
@@ -53,6 +53,7 @@ impl<'a> ResponseMessage<'a> {
         } else {
             result += "\r\n";
         }
-        result
+
+        result.as_bytes().to_vec().into_boxed_slice()
     }
 }

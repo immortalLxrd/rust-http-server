@@ -36,23 +36,28 @@ fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result<(), B
     let (_, headers) = content.split_once("\r\n").unwrap();
     let headers_splited: Vec<&str> = headers.split("\r\n").collect();
 
+    let not_found =
+        &ResponseMessage::new("HTTP/1.1", "404", "Not Found", Option::None, Option::None)
+            .as_bytes();
+
     match route {
         "" => {
-            let message = ResponseMessage::new("HTTP/1.1", "200", "OK", Option::None, Option::None)
-                .to_string();
-            stream.write(message.as_bytes())?;
+            let message =
+                &ResponseMessage::new("HTTP/1.1", "200", "OK", Option::None, Option::None)
+                    .as_bytes();
+            stream.write(message)?;
         }
         "echo" if !body.is_empty() => {
             let headers = ResponseHeaders::new("text/plain", body);
-            let message = ResponseMessage::new(
+            let message = &ResponseMessage::new(
                 "HTTP/1.1",
                 "200",
                 "OK",
                 Option::Some(headers),
                 Option::Some(body),
             )
-            .to_string();
-            stream.write(message.as_bytes())?;
+            .as_bytes();
+            stream.write(message)?;
         }
         "user-agent" => {
             let user_agent_pattern = "User-Agent: ";
@@ -63,15 +68,15 @@ fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result<(), B
             let response_content = finded_header.strip_prefix(user_agent_pattern).unwrap();
 
             let headers = ResponseHeaders::new("text/plain", response_content);
-            let message = ResponseMessage::new(
+            let message = &ResponseMessage::new(
                 "HTTP/1.1",
                 "200",
                 "OK",
                 Option::Some(headers),
                 Option::Some(response_content),
             )
-            .to_string();
-            stream.write(message.as_bytes())?;
+            .as_bytes();
+            stream.write(message)?;
         }
         "files" if !body.is_empty() => {
             if let Some(dir) = dir {
@@ -86,32 +91,25 @@ fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result<(), B
                 match get_file_content(path) {
                     Ok(content) => {
                         let headers = ResponseHeaders::new("application/octet-stream", &content);
-                        let message = ResponseMessage::new(
+                        let message = &ResponseMessage::new(
                             "HTTP/1.1",
                             "200",
                             "OK",
                             Option::Some(headers),
                             Option::Some(&content),
                         )
-                        .to_string();
-                        stream.write(message.as_bytes())?;
+                        .as_bytes();
+                        stream.write(message)?;
 
                         return Ok(());
                     }
                     Err(_) => (),
                 }
             }
-
-            let message =
-                ResponseMessage::new("HTTP/1.1", "404", "Not Found", Option::None, Option::None)
-                    .to_string();
-            stream.write(message.as_bytes())?;
+            stream.write(not_found)?;
         }
         _ => {
-            let message =
-                ResponseMessage::new("HTTP/1.1", "404", "Not Found", Option::None, Option::None)
-                    .to_string();
-            stream.write(message.as_bytes())?;
+            stream.write(not_found)?;
         }
     }
 
