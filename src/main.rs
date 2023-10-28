@@ -11,23 +11,32 @@ use std::{
 mod response;
 use response::response::{ResponseHeaders, ResponseMessage};
 
-fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result<(), Box<dyn Error>> {
-    let mut buf: [u8; 4096] = [0; 4096];
-    stream.read(&mut buf)?;
+fn parse_request(request: &str) -> (&str, &str, &str, Vec<&str>, &str) {
+    let request_splited: Vec<&str> = request.split(' ').collect();
 
-    let content = str::from_utf8(&buf)?;
-    let content_splited: Vec<&str> = content.split(' ').collect();
-
-    let method = content_splited[0];
-    let path = content_splited[1].strip_prefix('/').unwrap();
+    let method = request_splited[0];
+    let path = request_splited[1].strip_prefix('/').unwrap();
     let (route, body) = if let Some((route, body)) = path.split_once('/') {
         (route, body)
     } else {
         (path, "")
     };
 
-    let (_, headers) = content.split_once("\r\n").unwrap();
+    let (_, headers) = request.split_once("\r\n").unwrap();
     let headers_splited: Vec<&str> = headers.split("\r\n").collect();
+
+    let (_, content) = request.split_once("\r\n\r\n").unwrap();
+    let (content, _) = content.split_once("\0").unwrap();
+
+    (method, route, body, headers_splited, content)
+}
+
+fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result<(), Box<dyn Error>> {
+    let mut buf: [u8; 4096] = [0; 4096];
+    stream.read(&mut buf)?;
+
+    let request = str::from_utf8(&buf)?;
+    let (method, route, body, headers_splited, content) = parse_request(request);
 
     let not_found =
         ResponseMessage::new("HTTP/1.1", "404", "Not Found", Option::None, Option::None).as_bytes();
@@ -95,9 +104,17 @@ fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result<(), B
                             not_found
                         }
                     }
-                    "POST" => {
-                        not_found
-                    }
+                    "POST" => match fs::write(path, content) {
+                        Ok(_) => ResponseMessage::new(
+                            "HTTP/1.1",
+                            "201",
+                            "OK",
+                            Option::None,
+                            Option::None,
+                        )
+                        .as_bytes(),
+                        Err(_) => not_found,
+                    },
                     _ => not_found,
                 }
             } else {
